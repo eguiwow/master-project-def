@@ -22,8 +22,7 @@ kill $pid1
 
 /usr/bin/python3 /home/ander/scripts/output_2_csv.py $1
 mv /home/ander/results/energy$1.log /home/ander/results/energy_${1}_$timestamp_file.log
-# TODO scp connection and file sending
-# scp ander@145.108.225.16:~/results/$new_fileName /home/ander/thesis/results/$new_fileName
+#rm -r /home/ander/results/energy*.log
 
 # GL2 == /dev/ttyUSB0
 # GL3 == /dev/ttyUSB2
