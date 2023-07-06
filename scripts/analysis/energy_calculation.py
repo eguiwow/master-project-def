@@ -5,6 +5,7 @@ import numpy as np
 import os
 import sys
 import pandas as pd
+from datetime import timedelta
 from scipy.integrate import trapz
 
 def fix_headers_energy_files(folder_path):
@@ -44,13 +45,54 @@ def clean_df_and_timestamp(folder_path):
 			# Loop over fixed files
 			file_path = os.path.abspath(os.path.join(folder_path, file_name))
 			df = pd.read_csv(file_path)
+			# Remove non-useful columns
+			df = df.drop('Phase', axis=1)
+			df = df.drop('Index', axis=1)
+			df = df.drop('Volts', axis=1)
+			df = df.drop('Amps', axis=1)
+			df = df.drop('noidea', axis=1)
+
 			df.dropna(subset=['Watts'], inplace=True) # remove rows with NaN values in the 'Watts' column (6)
-			df['Datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'])
-			df['Timestamp'] = (df['Datetime'] - df['Datetime'].iloc[0]).dt.total_seconds()
+			df['Datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time']) # create a combined Datetime column
+			df['Timestamp'] = (df['Datetime'] - df['Datetime'].iloc[0]).dt.total_seconds() # Span of time between rows
 			
 			output_file_path = os.path.join(results_path, file_name)
 			df.to_csv(output_file_path, index=False)
 	return results_path
+
+def remove_outliers(folder_path, verbose=False):
+	files = os.listdir(folder_path)
+	file_count = 0
+	for file_name in files:
+		if file_name.startswith("energy"):
+			# Loop over fixed files
+			file_count += 1
+			file_path = os.path.abspath(os.path.join(folder_path, file_name))
+			df = pd.read_csv(file_path)
+
+			# Calculate statistical measures
+			# mean = df['Watts'].mean()
+			# std = df['Watts'].std()
+			# if verbose: print(f"[Before]\nMean: {mean}\nStd: {std}")
+			# threshold = 3 * std # Define threshold for outliers
+
+			Q1 = df['Watts'].quantile(0.25)
+			Q3 = df['Watts'].quantile(0.75)
+			IQR = Q3 - Q1			
+			threshold = 1.5 * IQR # Define threshold for outliers
+			# Identify outlier rows
+			outliers = df[(df['Watts'] < Q1 - threshold) | (df['Watts'] > Q3 + threshold)]
+			print(f"Num of outliers deleted: {len(outliers)}")
+			# Remove outlier rows
+			df = df.drop(outliers.index)
+			mean = df['Watts'].mean()
+			std = df['Watts'].std()
+			if verbose: print(f"[After]\nMean: {mean}\nStd: {std}")
+			results_path = os.path.join(folder_path, file_path)
+
+			# Save the processed DataFrame to a new CSV file
+			df.to_csv(results_path, index=False)
+
 
 def get_energy_from_df(df):
 	timestamp = np.array(df['Timestamp'])
@@ -69,6 +111,29 @@ def get_attributes_from_title(title: str):
 		pass
 
 	return GL, workload, VUs
+
+def filter_short_runs(folder_path):
+	files = os.listdir(folder_path)
+	removed_files = 0
+	for file_name in files:
+		if file_name.startswith("energy"):
+			file_path = os.path.abspath(os.path.join(folder_path, file_name))
+			df = pd.read_csv(file_path)    
+			# Convert 'Datetime Start' and 'Datetime End' columns to datetime objects
+			df['Datetime'] = pd.to_datetime(df['Datetime'])
+			datetime_start = df['Datetime'].iloc[0]
+			datetime_end = df['Datetime'].iloc[-1]
+			# Calculate the time difference between 'Datetime Start' and 'Datetime End'
+			time_elapsed = datetime_end - datetime_start
+			# Filter out rows where the time elapsed is less than 15 minutes
+			if time_elapsed <= timedelta(minutes=14):
+				# Add SHORT so we don't analyze them further
+				results_path = os.path.join(folder_path, "SHORT_" + file_name)
+				df.to_csv(results_path, index=False)
+				os.remove(os.path.join(folder_path, file_name))
+				removed_files += 1
+				print(f"File too short: {file_name}, Run time: {time_elapsed}")
+	print(f"{removed_files} shorter than 15 minutes.")
 
 def calc_energy_from_csv(folder_path):
 	files = os.listdir(folder_path)
@@ -106,6 +171,8 @@ if not os.path.exists(folder_path): # Check if the folder exists
 # Clean and process data
 if fix_headers_energy_files(folder_path):
 	results_path = clean_df_and_timestamp(folder_path)
+	filter_short_runs(results_path)
+	remove_outliers(results_path, verbose=False)
 	output_df = calc_energy_from_csv(results_path)
 	sorted_df = output_df.sort_values(by='Datetime Start')
 	sorted_df.to_csv(os.path.join(results_path, "total_energy_per_run.csv"), index=False)	

@@ -8,7 +8,7 @@ import sys
 import pandas as pd
 from scipy.integrate import trapz
 
-def clean_df_degrees(folder_path):
+def clean_df(folder_path):
 	files = os.listdir(folder_path)
 	results_path = os.path.join(folder_path, 'processed')
 	os.makedirs(results_path, exist_ok=True) # TODO should be created only if it's the good folder
@@ -20,6 +20,12 @@ def clean_df_degrees(folder_path):
 			temp_cont = 0
 			file_path = os.path.abspath(os.path.join(folder_path, file_name))
 			df = pd.read_csv(file_path)
+			# Change datetime format to match energy's
+			df['Datetime Start'] = pd.to_datetime(df['Datetime Start'], format='%Y%m%d-%H:%M:%S')
+			df['Datetime End'] = pd.to_datetime(df['Datetime End'], format='%Y%m%d-%H:%M:%S')
+			df['Datetime Start'] = df['Datetime Start'].dt.strftime('%d/%m/%Y %H:%M')
+			df['Datetime End'] = df['Datetime End'].dt.strftime('%d/%m/%Y %H:%M')
+
 			# extract the temperature column as a series
 			for column in df.columns:
 				if str(column).startswith('temp'):
@@ -98,7 +104,7 @@ if not os.path.exists(folder_path): # Check if the folder exists
 
 # Clean and process data
 
-results_path = clean_df_degrees(folder_path)
+results_path = clean_df(folder_path) # remove degree symbols + adjust datetime to proper format
 output_df = summary_cpu_csv(results_path)
 sorted_df = output_df.sort_values(by='Datetime Start')
 sorted_df.to_csv(os.path.join(results_path, "cpu_summary_run.csv"), index=False)	
