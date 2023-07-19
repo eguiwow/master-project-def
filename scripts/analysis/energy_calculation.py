@@ -7,6 +7,7 @@ import sys
 import pandas as pd
 from datetime import timedelta
 from scipy.integrate import trapz
+from scipy.stats import shapiro
 
 def clean_df_and_timestamp(folder_path):
 	file_count = 0
@@ -173,6 +174,29 @@ def calc_energy_from_csv(folder_path):
 	return pd.DataFrame(data, columns=['Datetime Start', 'Datetime End', 'GL', 'Workload (%)', 'VUs (#)', 'Energy (J)'])
 
 
+def normality_check(folder_path):
+	files = os.listdir(folder_path)
+	data = []
+	file_count = 0
+	for file_name in files:
+		if file_name.startswith("energy"):
+			# Loop over fixed files
+			file_count += 1
+			file_path = os.path.abspath(os.path.join(folder_path, file_name))
+			df = pd.read_csv(file_path)
+
+
+			# Assuming 'df' is your dataframe and 'column_name' is the column you want to test
+			data = df['Watts']
+			stat, p = shapiro(data)
+
+			alpha = 0.05  # Set your significance level
+			if p > alpha:
+				print(f"{file_name}: p={p}, Normally distributed.")
+			else:
+				print(f"{file_name}: p={p}, NOT normally distributed.")
+
+
 # MAIN LOGIC
 if len(sys.argv) < 2: # Check if the folder path argument is provided
 	print("Please provide the folder path as a command-line argument.")
@@ -188,6 +212,8 @@ if not os.path.exists(folder_path): # Check if the folder exists
 if fix_headers_energy_files(folder_path):
 	results_path = clean_df_and_timestamp(folder_path)
 	filter_short_runs(results_path)
+	normality_check(results_path)
+	exit()
 	remove_outliers(results_path, verbose=False)
 	output_df = calc_energy_from_csv(results_path)
 	sorted_df = output_df.sort_values(by='Datetime Start')
